@@ -1,0 +1,48 @@
+plugins {
+    id 'java'
+    id 'application'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
+}
+
+mainClassName = 'br.pizza.bot.Main'
+group 'br.pizza.bot'
+version '1.0-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+    maven { url "https://m2.chew.pro/releases" }
+    maven { url "https://m2.chew.pro/snapshots" }
+    maven { url = "https://repo.purpurmc.org/snapshots/" }
+    maven { url = "https://repo.nickuc.com/maven-releases/" }
+    maven { url = "https://jitpack.io" }
+}
+
+dependencies {
+    /*
+    Discord Dependencies
+     */
+    implementation 'net.dv8tion:JDA:5.0.0-beta.11'
+    implementation 'pw.chew:jda-chewtils:2.0-SNAPSHOT'
+
+    /*
+    Config Dependencies
+     */
+    implementation 'org.projectlombok:lombok:1.18.24'
+    implementation 'org.skife.config:config-magic:0.22'
+
+    annotationProcessor 'org.projectlombok:lombok:1.18.24'
+    testImplementation 'ch.qos.logback:logback-classic:1.4.5'
+
+    /*
+    Database Dependencies
+     */
+    implementation 'mysql:mysql-connector-java:8.0.33'
+    implementation 'com.zaxxer:HikariCP:5.0.1'
+
+    /*
+    Utils Dependencies
+     */
+    implementation 'com.squareup.okhttp3:okhttp:5.0.0-alpha.11'
+    implementation 'commons-io:commons-io:2.13.0'
+    implementation 'org.json:json:20230618'
+}
