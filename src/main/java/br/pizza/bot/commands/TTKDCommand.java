@@ -8,6 +8,7 @@ import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEve
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.components.buttons.Button;
+import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
 import net.dv8tion.jda.api.utils.FileUpload;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.CloseShieldOutputStream;
@@ -17,7 +18,9 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.text.CharacterIterator;
 import java.text.SimpleDateFormat;
+import java.text.StringCharacterIterator;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -40,143 +43,141 @@ public class TTKDCommand extends ListenerAdapter {
     @Override
     public void onSlashCommandInteraction(@NotNull SlashCommandInteractionEvent event) {
 
-        if (event.getName().equals("tiktokdownload")) {
+        if (!event.getName().equals("tiktokdownload")) return;
 
-            try {
-                OptionMapping multipleUrl = event.getOption("urls");
-                OptionMapping singleUrl = event.getOption("url");
+        OptionMapping multipleUrl = event.getOption("urls");
+        OptionMapping singleUrl = event.getOption("url");
 
-                List<String> commandUrls = new ArrayList<>();
-                // add the single url to the list
-                if (singleUrl != null && Utils.isValidResult(Utils.isValidURL(singleUrl.getAsString()))) {
-                    commandUrls.add(singleUrl.getAsString());
-                }
-                // parse the attachment into list of urls
-                if (multipleUrl != null) {
-                    // get the attachment file
-                    Message.Attachment attachment = multipleUrl.getAsAttachment();
-                    // extract the urls
-                    commandUrls.addAll(Utils.extractValidLinksFromAttachment(attachment));
-                }
+        List<String> commandUrls = new ArrayList<>();
+        // add the single url to the list
+        if (singleUrl != null && Utils.isValidResult(Utils.isValidURL(singleUrl.getAsString()))) {
+            commandUrls.add(singleUrl.getAsString());
+        }
+        // parse the attachment into list of urls
+        if (multipleUrl != null) {
+            // get the attachment file
+            Message.Attachment attachment = multipleUrl.getAsAttachment();
+            // extract the urls
+            commandUrls.addAll(Utils.extractValidLinksFromAttachment(attachment));
+        }
 
+        if (commandUrls.isEmpty()) {
+            event.reply("Please provide at least one TikTok URL.").setEphemeral(true).queue();
+            return;
+        }
+
+        List<String> failedVideos = new ArrayList<>();
+        List<String> successfulVideos = new ArrayList<>();
+        final int originalSize = commandUrls.size();
+
+        // Create a scheduler
+        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+        event.reply("Downloading...").setEphemeral(true).queue(m -> {
+            AtomicInteger successfulDownloadInts = new AtomicInteger();
+
+            // Start the scheduler
+            scheduler.scheduleAtFixedRate(() -> {
+                // If the url is already empty, stop the scheduler
                 if (commandUrls.isEmpty()) {
-                    event.reply("Please provide at least one TikTok URL.").setEphemeral(true).queue();
+                    StringBuilder builder = new StringBuilder();
+                    builder.append("Successful Downloads: ").append(successfulDownloadInts.get()).append("\n");
+                    builder.append("Failed Download: ").append(failedVideos.size()).append("\n");
+                    builder.append("Video Amount: ").append(originalSize).append(" videos\n");
+                    builder.append("The download is completed!\n\n");
+                    builder.append("Failed Video Links:\n");
+                    // Give the link of failed videos
+                    failedVideos.stream()
+                            .filter(video -> !successfulVideos.contains(video))
+                            .toList()
+                            .forEach(failedVideo -> builder.append("- <").append(failedVideo).append(">").append("\n"));
+                    // Edit the original message
+                    m.editOriginal(builder.toString()).queue();
+                    // Stop the scheduler
+                    scheduler.shutdown();
                     return;
                 }
 
-                List<String> failedVideos = new ArrayList<>();
-                List<String> successfulVideos = new ArrayList<>();
-                final int originalSize = commandUrls.size();
+                String url = commandUrls.get(0);
+                String result = Utils.isValidURL(url);
+                boolean tiktok = result.equalsIgnoreCase("tiktok");
+                if (!Utils.isValidResult(result)) {
+                    m.editOriginal("The URL `" + url + "` is not valid!").queue();
+                    return;
+                }
 
-                ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-                event.reply("Downloading...").setEphemeral(true).queue(m -> {
-                    AtomicInteger successfulDownloadInts = new AtomicInteger();
+                String videoJson = Utils.getVideoJsonInfo(url, botConfig, tiktok);
+                if (videoJson == null) {
+                    failedVideos.add(url);
+                    return;
+                }
 
-                    scheduler.scheduleAtFixedRate(() -> {
-                        if (commandUrls.isEmpty()) {
-                            StringBuilder builder = new StringBuilder();
-                            builder.append("Successful Downloads: ").append(successfulDownloadInts.get()).append("\n");
-                            builder.append("Failed Download: ").append(failedVideos.size()).append("\n");
-                            builder.append("Video Amount: ").append(originalSize).append(" videos\n");
-                            builder.append("The download is completed!\n\n");
-                            builder.append("Failed Video Links:\n");
-                            List<String> filteredVideos = failedVideos.stream()
-                                    .filter(video -> !successfulVideos.contains(video))
-                                    .toList();
-                            for (String failedVideo : filteredVideos) {
-                                builder.append("<").append(failedVideo).append(">").append("\n");
-                            }
-                            // Edit the original message
-                            m.editOriginal(builder.toString()).queue();
-                            // Stop the scheduler
-                            scheduler.shutdown();
-                            return;
-                        }
+                String videoUrl = Utils.getVideoDownloadLink(videoJson, tiktok);
+                InputStream inputStream = Utils.getVideoInputStream(videoUrl);
 
-                        String url = commandUrls.get(0);
-                        String result = Utils.isValidURL(url);
-                        boolean tiktok = result.equalsIgnoreCase("tiktok");
-                        if (!Utils.isValidResult(result)) {
-                            m.editOriginal("The URL `" + url + "` is not valid!").queue();
-                            return;
-                        }
+                String videoId = Utils.getVideoId(videoJson, videoUrl, tiktok);
+                String author = Utils.getVideoAuthorName(videoJson, tiktok);
+                String caption = Utils.getVideoDescriptionName(videoJson, tiktok);
 
-                        String videoJson = Utils.getVideoJsonInfo(url, botConfig, tiktok);
-                        if (videoJson == null) {
-                            failedVideos.add(url);
-                            return;
-                        }
+                // Get the file size
+                long inputStreamSize = getInputStreamSize(inputStream);
+                String fileSize = humanReadableByteCountSI(inputStreamSize);
 
-                        String videoUrl = Utils.getVideoDownloadLink(videoJson, tiktok);
-                        InputStream inputStream = Utils.getVideoInputStream(videoUrl);
+                FileUpload fileUpload = null;
 
-                        String videoId = Utils.getVideoId(videoJson, videoUrl, tiktok);
-                        String author = Utils.getVideoAuthorName(videoJson, tiktok);
-                        String caption = Utils.getVideoDescriptionName(videoJson, tiktok);
+                // Create the message
+                String videoMessage;
+                String logMessage;
 
-                        long inputStreamSize = getInputStreamSize(inputStream);
-                        FileUpload fileUpload = FileUpload.fromData(inputStream, videoId + ".mov");
-                        System.out.println("[Download] " + url + " (" + inputStreamSize + " bytes)");
-                        if (inputStreamSize > 8388608) {
-                            System.out.println("[Download] " + url + " - Sending message without attachment...");
-                            String videoInformationWithoutAttachment =
-                                    "> Author: " + author + "\n" +
-                                            "> Description: " + caption + "[.](" + videoUrl + ")" + "\n" +
-                                            "<" + url + ">";
-
-                            event.getChannel().sendMessage(videoInformationWithoutAttachment).addActionRow(
-                                    Button.link(videoUrl, "Download Video"),
-                                    Button.link(url, "Go to TikTok")
-                            ).queue(message -> {
-                                // Send success message
-                                System.out.println("[Download] " + url + " - Successfully send message!");
-                                // Close the input stream
-                                try {
-                                    inputStream.close();
-                                } catch (IOException e) {
-                                    e.printStackTrace();
-                                }
-                            });
-                        } else {
-                            System.out.println("[Download] " + url + " - Sending message with attachment...");
-                            String videoInformationWithAttachment =
-                                    "> Author: " + author + "\n" +
-                                            "> Description: " + caption + "\n" +
-                                            "<" + url + ">";
-                            event.getChannel().sendMessage(videoInformationWithAttachment).setFiles(fileUpload)
-                                    .addActionRow(
-                                            Button.link(videoUrl, "Download Video"),
-                                            Button.link(url, "Go to TikTok")
-                                    ).queue(message -> {
-                                        // Send success message
-                                        System.out.println("[Download] " + url + " - Successfully send message!");
-                                        // Close the input stream
-                                        try {
-                                            inputStream.close();
-                                        } catch (IOException e) {
-                                            e.printStackTrace();
-                                        }
-                                    });
-                        }
-
-                        successfulDownloadInts.getAndIncrement();
-                        successfulVideos.add(url);
-                        // remove the first element
-                        commandUrls.remove(0);
-                        // Edit the message
-                        m.editOriginal(
-                                "Total Downloads: " + successfulDownloadInts.get() + "\n" +
-                                        "Failed Download: " + failedVideos.size() + "\n" +
-                                        "Remaining: " + commandUrls.size() + "/" + originalSize
-                        ).queue();
-
-                    }, 0, 3L, TimeUnit.SECONDS);
-
+                if (inputStreamSize > 8388608) {
+                    logMessage = "[Download] " + url + " (" + fileSize + ") " + " - Sending message without attachment...";
+                    videoMessage = "> Author: " + author + "\n" +
+                                    "> Description: " + caption + "[.](" + videoUrl + ")" + "\n" +
+                                    "> <" + url + ">";
+                } else {
+                    logMessage = "[Download] " + url + " (" + fileSize + ") " +" - Sending message with attachment...";
+                    videoMessage = "> Author: " + author + "\n" +
+                                    "> Description: " + caption + "\n" +
+                                    "> <" + url + ">";
+                    // Get the new input stream
+                    InputStream videoInputStream = Utils.getVideoInputStream(videoUrl);
+                    fileUpload = FileUpload.fromData(videoInputStream, videoId + ".mov");
+                }
+                // Send log messages
+                System.out.println(logMessage);
+                MessageCreateAction action = event.getChannel().sendMessage(videoMessage);
+                if (fileUpload != null) action.setFiles(fileUpload);
+                // Add the action row
+                action.addActionRow(
+                        Button.link(videoUrl, "Download Video"),
+                        Button.link(url, "Go to Link")
+                );
+                // Send the message
+                action.queue(success -> {
+                    // Send success message
+                    System.out.println("[Download] " + url + " - Successfully send message!");
+                    // Close the input stream
+                    try {
+                        inputStream.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
                 });
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
+
+                successfulDownloadInts.getAndIncrement();
+                successfulVideos.add(url);
+                // remove the first element
+                commandUrls.remove(0);
+                // Edit the message
+                m.editOriginal(
+                        "Total Downloads: " + successfulDownloadInts.get() + "\n" +
+                                "Failed Download: " + failedVideos.size() + "\n" +
+                                "Remaining: " + commandUrls.size() + "/" + originalSize
+                ).queue();
+
+            }, 0, 3L, TimeUnit.SECONDS);
+
+        });
+
     }
 
     public static void salvarInputStream(InputStream inputStream, String videoId) {
@@ -198,6 +199,18 @@ public class TTKDCommand extends ListenerAdapter {
                 e.printStackTrace();
             }
         }
+    }
+
+    public static String humanReadableByteCountSI(long bytes) {
+        if (-1000 < bytes && bytes < 1000) {
+            return bytes + " B";
+        }
+        CharacterIterator ci = new StringCharacterIterator("kMGTPE");
+        while (bytes <= -999_950 || bytes >= 999_950) {
+            bytes /= 1000;
+            ci.next();
+        }
+        return String.format("%.1f %cB", bytes / 1000.0, ci.current());
     }
 
     public static long getInputStreamSize(InputStream inputStream) {

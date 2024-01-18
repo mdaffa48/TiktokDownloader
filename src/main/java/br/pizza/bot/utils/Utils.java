@@ -207,9 +207,7 @@ public class Utils {
                     .build();
 
             Response response = client.newCall(request).execute();
-            if (response.isSuccessful()) {
-                return response.body().byteStream();
-            }
+            return response.body().byteStream();
 
         } catch (Exception e) {
             e.printStackTrace();
