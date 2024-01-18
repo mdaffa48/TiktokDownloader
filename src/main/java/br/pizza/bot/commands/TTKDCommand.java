@@ -88,6 +88,8 @@ public class TTKDCommand extends ListenerAdapter {
                             }
                             // Edit the original message
                             m.editOriginal(builder.toString()).queue();
+                            // Stop the scheduler
+                            scheduler.shutdown();
                             return;
                         }
 
@@ -168,23 +170,6 @@ public class TTKDCommand extends ListenerAdapter {
                                         "Remaining: " + commandUrls.size() + "/" + originalSize
                         ).queue();
 
-                        // Check if it's empty
-                        if (commandUrls.isEmpty()) {
-                            StringBuilder builder = new StringBuilder();
-                            builder.append("Successful Downloads: ").append(successfulDownloadInts.get()).append("\n");
-                            builder.append("Failed Download: ").append(failedVideos.size()).append("\n");
-                            builder.append("Video Amount: ").append(originalSize).append(" videos\n");
-                            builder.append("The download is completed!\n\n");
-                            builder.append("Failed Video Links:\n");
-                            List<String> filteredVideos = failedVideos.stream()
-                                    .filter(video -> !successfulVideos.contains(video))
-                                    .toList();
-                            for (String failedVideo : filteredVideos) {
-                                builder.append("<").append(failedVideo).append(">").append("\n");
-                            }
-                            // Edit the original message
-                            m.editOriginal(builder.toString()).queue();
-                        }
                     }, 0, 3L, TimeUnit.SECONDS);
 
                 });
