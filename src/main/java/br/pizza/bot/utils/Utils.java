@@ -21,114 +21,186 @@ import java.util.regex.Pattern;
 
 public class Utils {
 
-
-    public static String getVideoJsonInfo(String link, BotConfig botConfig) {
-        try {
-            OkHttpClient client = new OkHttpClient();
-
-            Request request = new Request.Builder()
-                    .url("https://tiktok-downloader-download-tiktok-videos-without-watermark.p.rapidapi.com/vid/index?url=" + link)
-                    .get()
-                    .addHeader("X-RapidAPI-Key", botConfig.getRapidApiKey())
-                    .addHeader("X-RapidAPI-Host", "tiktok-downloader-download-tiktok-videos-without-watermark.p.rapidapi.com")
-                    .build();
+    private static final OkHttpClient client = new OkHttpClient();
 
 
-            try (Response response = client.newCall(request).execute()) {
-                String responseBody = response.body().string();
-                return responseBody;
+    public static String getVideoJsonInfo(String link, BotConfig botConfig, boolean tiktok) {
+        if (tiktok) {
+            try {
+                Request request = new Request.Builder()
+                        .url("https://tiktok-downloader-download-tiktok-videos-without-watermark.p.rapidapi.com/vid/index?url=" + link)
+                        .get()
+                        .addHeader("X-RapidAPI-Key", botConfig.getRapidApiKey())
+                        .addHeader("X-RapidAPI-Host", "tiktok-downloader-download-tiktok-videos-without-watermark.p.rapidapi.com")
+                        .build();
+
+                try (Response response = client.newCall(request).execute()) {
+                    return response.body().string();
+                }
+            } catch (Exception e) {
+                return null;
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+        } else {
+            try {
+                Request request = new Request.Builder()
+                        .url("https://instagram301.p.rapidapi.com/postinfo.php?url=" + link)
+                        .get()
+                        .addHeader("X-RapidAPI-Key", "0b7167575emsh5e451a16348d2cap1021d5jsn713cb56a7ecb")
+                        .addHeader("X-RapidAPI-Host", "instagram301.p.rapidapi.com")
+                        .build();
+
+                try (Response response = client.newCall(request).execute()) {
+                    return response.body().string();
+                }
+            } catch (Exception ex) {
+                return null;
+            }
         }
+    }
+
+    public static String getVideoDownloadLink(String json, boolean tiktok) {
+        if (tiktok) {
+            try {
+                if (json.equals("null")) return "Invalid";
+
+                JSONObject jsonResponse = new JSONObject(json);
+
+                if (jsonResponse.has("video")) {
+                    JSONArray videoArray = jsonResponse.getJSONArray("video");
+                    if (videoArray.length() > 0) {
+                        return videoArray.getString(0);
+                    }
+                }
+            } catch (Exception e) {
+                return null;
+            }
+        } else {
+            try {
+                if (json.equals("null")) return "Invalid";
+
+                JSONObject jsonResponse = new JSONObject(json);
+                JSONObject result = jsonResponse.getJSONObject("result");
+                return result.getString("video_url");
+
+            } catch (Exception ex) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    public static String getVideoAuthorName(String json, boolean tiktok) {
+        if (tiktok) {
+            try {
+                if (json.equals("null")) return "Invalid";
+
+                JSONObject jsonResponse = new JSONObject(json);
+
+                if (jsonResponse.has("author")) {
+                    JSONArray videoArray = jsonResponse.getJSONArray("author");
+                    if (videoArray.length() > 0) {
+                        return videoArray.getString(0);
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        } else {
+            try {
+                if (json.equals("null")) return "Invalid";
+
+                JSONObject jsonResponse = new JSONObject(json);
+                JSONObject result = jsonResponse.getJSONObject("result");
+                JSONObject owner = result.getJSONObject("owner");
+                return owner.getString("username");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
 
         return null;
     }
 
-    public static String getVideoDownloadLink(String json) {
+    public static String getVideoDescriptionName(String json, boolean tiktok) {
+        if (tiktok) {
+            try {
+                if (json.equals("null")) return "Invalid";
 
-        try {
-            if (json.equals("null")) return "Invalid";
+                JSONObject jsonResponse = new JSONObject(json);
 
-            JSONObject jsonResponse = new JSONObject(json);
-
-            if (jsonResponse.has("video")) {
-                JSONArray videoArray = jsonResponse.getJSONArray("video");
-                if (videoArray.length() > 0) {
-                    return videoArray.getString(0);
+                if (jsonResponse.has("description")) {
+                    JSONArray videoArray = jsonResponse.getJSONArray("description");
+                    if (videoArray.length() > 0) {
+                        return videoArray.getString(0);
+                    }
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
+        } else {
+            try {
+                if (json.equals("null")) return "Invalid";
+
+                JSONObject jsonResponse = new JSONObject(json);
+                JSONObject result = jsonResponse.getJSONObject("result");
+                JSONObject edges = result.getJSONObject("edge_media_to_caption");
+                JSONObject node = edges.getJSONArray("edges")
+                        .getJSONObject(0)
+                        .getJSONObject("node");
+
+                return node.getString("text");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
-        return null;
-    }
-
-    public static String getVideoAuthorName(String json) {
-
-        try {
-            if (json.equals("null")) return "Invalid";
-
-            JSONObject jsonResponse = new JSONObject(json);
-
-            if (jsonResponse.has("author")) {
-                JSONArray videoArray = jsonResponse.getJSONArray("author");
-                if (videoArray.length() > 0) {
-                    return videoArray.getString(0);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return null;
-    }
-
-    public static String getVideoDescriptionName(String json) {
-
-        try {
-            if (json.equals("null")) return "Invalid";
-
-            JSONObject jsonResponse = new JSONObject(json);
-
-            if (jsonResponse.has("description")) {
-                JSONArray videoArray = jsonResponse.getJSONArray("description");
-                if (videoArray.length() > 0) {
-                    return videoArray.getString(0);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
 
         return null;
     }
 
 
-    public static String getVideoId(String json) {
+    public static String getVideoId(String json, String videoUrl, boolean tiktok) {
+        if (tiktok) {
+            try {
+                if (json.equals("null")) return "Invalid";
 
-        try {
-            if (json.equals("null")) return "Invalid";
+                JSONObject jsonResponse = new JSONObject(json);
 
-            JSONObject jsonResponse = new JSONObject(json);
-
-            if (jsonResponse.has("videoid")) {
-                JSONArray videoArray = jsonResponse.getJSONArray("videoid");
-                if (videoArray.length() > 0) {
-                    return videoArray.getString(0);
+                if (jsonResponse.has("videoid")) {
+                    JSONArray videoArray = jsonResponse.getJSONArray("videoid");
+                    if (videoArray.length() > 0) {
+                        return videoArray.getString(0);
+                    }
                 }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } else {
+            try {
+                if (json.equals("null")) return "Invalid";
 
+                JSONObject jsonResponse = new JSONObject(json);
+                JSONObject result = jsonResponse.getJSONObject("result");
+                return result.getString("id");
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
         return null;
+    }
+
+    public static String getInstagramShortcode(String url) {
+        String replace = url.replace("https://", "");
+        String[] split = replace.split("/");
+        return split[2];
     }
 
     public static InputStream getVideoInputStream(String videoUrl) {
         try {
-            OkHttpClient client = new OkHttpClient();
             Request request = new Request.Builder()
                     .url(videoUrl)
                     .get()
@@ -136,22 +208,35 @@ public class Utils {
 
             Response response = client.newCall(request).execute();
             if (response.isSuccessful()) {
-                ResponseBody responseBody = response.body();
-                if (responseBody != null) {
-                    return responseBody.byteStream();
-                }
+                return response.body().byteStream();
             }
+
         } catch (Exception e) {
             e.printStackTrace();
         }
         return null;
     }
 
-    public static boolean isValidURL(String url) {
-        String regex = "^(http|https)://www\\.tiktok\\.com(/[a-zA-Z0-9-_\\.?&%+=\"]?)*?(/.*)?$";
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(url);
-        return matcher.matches();
+    public static String isValidURL(String url) {
+        String tiktokRegex = "^^(http|https)://www\\.tiktok\\.com(/[a-zA-Z0-9-_\\.?&%+=\"]?)*?(/.*)?$";
+        Pattern tiktokPattern = Pattern.compile(tiktokRegex);
+        Matcher tiktokMatcher = tiktokPattern.matcher(url);
+
+        String instagramRegex = "^(http|https)://www\\.instagram\\.com(/[a-zA-Z0-9-_\\.?&%+=\"]?)*?(/.*)?$";
+        Pattern instagramPattern = Pattern.compile(instagramRegex);
+        Matcher instagramMatcher = instagramPattern.matcher(url);
+
+        if (tiktokMatcher.matches()) return "tiktok";
+        if (instagramMatcher.matches()) return "instagram";
+
+        return null;
+    }
+
+    public static boolean isValidResult(String url) {
+        if (url == null) return false;
+        if (url.equalsIgnoreCase("tiktok")) return true;
+        if (url.equalsIgnoreCase("instagram")) return true;
+        return false;
     }
 
     public static List<String> extractValidLinksFromAttachment(Message.Attachment attachment) {
@@ -161,7 +246,7 @@ public class Utils {
             String text = new String(bytes);
             String[] words = text.split("\\s+");
             for (String word : words) {
-                if (isValidURL(word)) {
+                if (isValidResult(isValidURL(word))) {
                     links.add(word);
                 }
             }
