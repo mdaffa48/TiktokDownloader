@@ -139,8 +139,7 @@ public class TTKDCommand extends ListenerAdapter {
                                     "> Description: " + caption + "\n" +
                                     "> <" + url + ">";
                     // Get the new input stream
-                    InputStream videoInputStream = Utils.getVideoInputStream(videoUrl);
-                    fileUpload = FileUpload.fromData(videoInputStream, videoId + ".mov");
+                    fileUpload = FileUpload.fromData(inputStream, videoId + ".mov");
                 }
                 // Send log messages
                 System.out.println(logMessage);
