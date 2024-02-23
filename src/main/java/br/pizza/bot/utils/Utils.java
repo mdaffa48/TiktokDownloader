@@ -2,10 +2,7 @@ package br.pizza.bot.utils;
 
 import br.pizza.bot.config.BotConfig;
 import net.dv8tion.jda.api.entities.Message;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
-import okhttp3.ResponseBody;
+import okhttp3.*;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -22,6 +19,12 @@ import java.util.regex.Pattern;
 public class Utils {
 
     private static final OkHttpClient client = new OkHttpClient();
+    public record VideoStream(
+            InputStream stream,
+            long size
+    ) {
+
+    };
 
 
     public static String getVideoJsonInfo(String link, BotConfig botConfig, boolean tiktok) {
@@ -43,10 +46,10 @@ public class Utils {
         } else {
             try {
                 Request request = new Request.Builder()
-                        .url("https://instagram301.p.rapidapi.com/postinfo.php?url=" + link)
+                        .url("https://instagram-scraper-api2.p.rapidapi.com/v1/post_info?code_or_id_or_url=" + link)
                         .get()
                         .addHeader("X-RapidAPI-Key", "0b7167575emsh5e451a16348d2cap1021d5jsn713cb56a7ecb")
-                        .addHeader("X-RapidAPI-Host", "instagram301.p.rapidapi.com")
+                        .addHeader("X-RapidAPI-Host", "instagram-scraper-api2.p.rapidapi.com")
                         .build();
 
                 try (Response response = client.newCall(request).execute()) {
@@ -55,6 +58,29 @@ public class Utils {
             } catch (Exception ex) {
                 return null;
             }
+        }
+    }
+
+    //Short url
+    public static String shortVideoUrl(String url) {
+        try {
+            //Make API post request
+            RequestBody formBody = new FormBody.Builder()
+                    .add("url", url)
+                    .build();
+            Request request = new Request.Builder()
+                    .url("https://cleanuri.com/api/v1/shorten")
+                    .post(formBody)
+                    .header("Accept", "application/json")
+                    .build();
+
+            try (Response response = client.newCall(request).execute()) {
+                JSONObject jsonResponse = new JSONObject(response.body().string());
+                return jsonResponse.getString("result_url");
+            }
+
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 
@@ -68,19 +94,20 @@ public class Utils {
                 if (jsonResponse.has("video")) {
                     JSONArray videoArray = jsonResponse.getJSONArray("video");
                     if (videoArray.length() > 0) {
-                        return videoArray.getString(0);
+                        String url = videoArray.getString(0);
+                        return url;
                     }
                 }
             } catch (Exception e) {
                 return null;
             }
+
         } else {
             try {
                 if (json.equals("null")) return "Invalid";
-
                 JSONObject jsonResponse = new JSONObject(json);
-                JSONObject result = jsonResponse.getJSONObject("result");
-                return result.getString("video_url");
+                String url = jsonResponse.getJSONObject("data").getString("video_url");
+                return url;
 
             } catch (Exception ex) {
                 return null;
@@ -110,9 +137,8 @@ public class Utils {
                 if (json.equals("null")) return "Invalid";
 
                 JSONObject jsonResponse = new JSONObject(json);
-                JSONObject result = jsonResponse.getJSONObject("result");
-                JSONObject owner = result.getJSONObject("owner");
-                return owner.getString("username");
+                JSONObject user = jsonResponse.getJSONObject("data").getJSONObject("user");
+                return user.getString("username");
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -144,13 +170,8 @@ public class Utils {
                 if (json.equals("null")) return "Invalid";
 
                 JSONObject jsonResponse = new JSONObject(json);
-                JSONObject result = jsonResponse.getJSONObject("result");
-                JSONObject edges = result.getJSONObject("edge_media_to_caption");
-                JSONObject node = edges.getJSONArray("edges")
-                        .getJSONObject(0)
-                        .getJSONObject("node");
-
-                return node.getString("text");
+                JSONObject desc = jsonResponse.getJSONObject("data").getJSONObject("caption");
+                return desc.getString("text");
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -183,8 +204,8 @@ public class Utils {
                 if (json.equals("null")) return "Invalid";
 
                 JSONObject jsonResponse = new JSONObject(json);
-                JSONObject result = jsonResponse.getJSONObject("result");
-                return result.getString("id");
+                JSONObject desc = jsonResponse.getJSONObject("data").getJSONObject("caption");
+                return Long.toString(desc.getLong("id"));
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -199,15 +220,17 @@ public class Utils {
         return split[2];
     }
 
-    public static InputStream getVideoInputStream(String videoUrl) {
+
+    public static VideoStream getVideoInputStream(String videoUrl) {
         try {
+
             Request request = new Request.Builder()
                     .url(videoUrl)
                     .get()
                     .build();
 
             Response response = client.newCall(request).execute();
-            return response.body().byteStream();
+            return new VideoStream(response.body().byteStream(), Long.parseLong(response.header("Content-Length"), 10));
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -258,4 +281,9 @@ public class Utils {
         String fileName = attachment.getFileName();
         return fileName.endsWith(".txt") || fileName.endsWith(".log");
     }
+
+    public static OkHttpClient getClient() {
+        return client;
+    }
+
 }

@@ -11,7 +11,6 @@ import net.dv8tion.jda.api.interactions.components.buttons.Button;
 import net.dv8tion.jda.api.requests.restaction.MessageCreateAction;
 import net.dv8tion.jda.api.utils.FileUpload;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.io.output.CloseShieldOutputStream;
 import org.jetbrains.annotations.NotNull;
 
 import java.io.*;
@@ -22,19 +21,14 @@ import java.text.CharacterIterator;
 import java.text.SimpleDateFormat;
 import java.text.StringCharacterIterator;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 public class TTKDCommand extends ListenerAdapter {
 
     private final BotConfig botConfig;
-
     public TTKDCommand(BotConfig botConfig) {
         this.botConfig = botConfig;
     }
@@ -111,16 +105,18 @@ public class TTKDCommand extends ListenerAdapter {
                     return;
                 }
 
+                //Get download link
                 String videoUrl = Utils.getVideoDownloadLink(videoJson, tiktok);
-                InputStream inputStream = Utils.getVideoInputStream(videoUrl);
+                //VideoStream contains the inputStream and the stream size
+                Utils.VideoStream videostream = Utils.getVideoInputStream(videoUrl);
+                InputStream inputStream = videostream.stream();
 
                 String videoId = Utils.getVideoId(videoJson, videoUrl, tiktok);
                 String author = Utils.getVideoAuthorName(videoJson, tiktok);
                 String caption = Utils.getVideoDescriptionName(videoJson, tiktok);
 
-                // Get the file size
-                long inputStreamSize = getInputStreamSize(inputStream);
-                String fileSize = humanReadableByteCountSI(inputStreamSize);
+                // Get the file size in readable format
+                String fileSize = humanReadableByteCountSI(videostream.size());
 
                 FileUpload fileUpload = null;
 
@@ -128,23 +124,31 @@ public class TTKDCommand extends ListenerAdapter {
                 String videoMessage;
                 String logMessage;
 
-                if (inputStreamSize > 8388608) {
-                    logMessage = "[Download] " + url + " (" + fileSize + ") " + " - Sending message without attachment...";
+                if (videostream.size() > 8388608) {
+                    logMessage = "[Download] " + url + " (" + fileSize + ") " + "- Sending message without attachment...";
                     videoMessage = "> Author: " + author + "\n" +
                                     "> Description: " + caption + "[.](" + videoUrl + ")" + "\n" +
                                     "> <" + url + ">";
                 } else {
-                    logMessage = "[Download] " + url + " (" + fileSize + ") " +" - Sending message with attachment...";
+                    logMessage = "[Download] " + url + " (" + fileSize + ") " + "- Sending message with attachment...";
                     videoMessage = "> Author: " + author + "\n" +
                                     "> Description: " + caption + "\n" +
                                     "> <" + url + ">";
                     // Get the new input stream
-                    fileUpload = FileUpload.fromData(inputStream, videoId + ".mov");
+                    fileUpload = FileUpload.fromData(inputStream, videoId + ".mp4");
                 }
                 // Send log messages
                 System.out.println(logMessage);
                 MessageCreateAction action = event.getChannel().sendMessage(videoMessage);
-                if (fileUpload != null) action.setFiles(fileUpload);
+
+                if (fileUpload != null) action.addFiles(fileUpload);
+
+                //Short url
+                if (videoUrl.length() > 512) {
+                    videoUrl = Utils.shortVideoUrl(videoUrl);
+                    System.out.println("[URL] URL longer than 512, shorted url: " + videoUrl);
+                }
+
                 // Add the action row
                 action.addActionRow(
                         Button.link(videoUrl, "Download Video"),
@@ -213,15 +217,10 @@ public class TTKDCommand extends ListenerAdapter {
     }
 
     public static long getInputStreamSize(InputStream inputStream) {
+
         try {
-            long size = 0;
-            byte[] buffer = new byte[1024];
-
-            int bytesRead;
-            while ((bytesRead = inputStream.read(buffer)) != -1) {
-                size += bytesRead;
-            }
-
+            byte[] bytes = IOUtils.toByteArray(inputStream);
+            long size = bytes.length;
             return size;
         } catch (IOException e) {
             e.printStackTrace();
